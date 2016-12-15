@@ -9,9 +9,8 @@ Install
 
 Via pip
 
-``` bash
-$ pip install dockermatrix
-```
+.. code:: bash
+    pip install dockermatrix
 
 
 License

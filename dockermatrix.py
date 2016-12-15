@@ -16,29 +16,32 @@ class Image:
         self.path = path
 
 
-class BuildElement(object):
+class BuildData(object):
     """Defines an element of the build matrix."""
 
     def __init__(self, version: semver.VersionInfo, options: List[Union[str, type(None)]]):
         self.version = version
         self.options = options
 
-    def get_formatted_version(self):
+    def get_formatted_version(self) -> str:
         return semver.format_version(*self.version)
+
+    def filter_options(self) -> List[Union[str, type(None)]]:
+        return [str(x) for x in self.options if x is not None]
 
 
 class BuildMatrix:
-    def __init__(self, elements: Set[BuildElement]):
-        self.elements = elements
+    def __init__(self, data: Set[BuildData]):
+        self.data = data
 
         latest = {}
         self.latest = {}
 
         # Find latest versions
-        for element in elements:
-            major = element.version.major
-            minor = "%s.%s" % (element.version.major, element.version.minor)
-            version = element.get_formatted_version()
+        for d in data:
+            major = d.version.major
+            minor = "%s.%s" % (d.version.major, d.version.minor)
+            version = d.get_formatted_version()
 
             if "prerelease" in version:
                 major += "-" + version["prerelease"]
@@ -54,12 +57,12 @@ class BuildMatrix:
 
             self.latest[version].add(l)
 
-    def build(self, base_path: str, full_version_path: bool = False) -> Set[Tuple[BuildElement, Image]]:
+    def build(self, base_path: str, full_version_path: bool = False) -> Set[Tuple[BuildData, Image]]:
         images = set()
 
-        for element in self.elements:
-            version = element.get_formatted_version()
-            minor = "%s.%s" % (element.version.major, element.version.minor)
+        for d in self.data:
+            version = d.get_formatted_version()
+            minor = "%s.%s" % (d.version.major, d.version.minor)
             versions = {version}
             path_version = minor
 
@@ -72,22 +75,22 @@ class BuildMatrix:
             tags = set()
 
             for v in versions:
-                tags.add('-'.join([str(x) for x in [v] + list(element.options) if x is not None]))
+                tags.add('-'.join([str(x) for x in [v] + list(d.options) if x is not None]))
 
-            path = os.path.join(base_path, '/'.join([str(x) for x in [path_version] + list(element.options) if x is not None]))
+            path = os.path.join(base_path, '/'.join([str(x) for x in [path_version] + list(d.options) if x is not None]))
 
-            images.add((element, Image(tags, path)))
+            images.add((d, Image(tags, path)))
 
         return images
 
 
 def create_build_matrix(matrix: Set[Union[str, type(None)]]) -> BuildMatrix:
-    elements = set()
+    data = set()
 
-    for element in matrix:
-        elements.add(BuildElement(semver.parse_version_info(element[0]), element[1:]))
+    for d in matrix:
+        data.add(BuildData(semver.parse_version_info(d[0]), d[1:]))
 
-    return BuildMatrix(elements)
+    return BuildMatrix(data)
 
 
 class DockerfileBuilder:
@@ -96,7 +99,7 @@ class DockerfileBuilder:
     def __init__(self, clear: bool = True):
         self.clear = clear
 
-    def build(self, images: Set[Tuple[BuildElement, Image]], dist: str = 'dist', template: str = 'Dockerfile.template'):
+    def build(self, images: Set[Tuple[BuildData, Image]], dist: str = 'dist', template: str = 'Dockerfile.template'):
         env = Environment(loader=FileSystemLoader(os.path.dirname(os.path.realpath(template))))
 
         dist = os.path.realpath(dist)
@@ -109,13 +112,13 @@ class DockerfileBuilder:
         # Initialize template
         template = env.get_template(template)
 
-        for build_element, image in images:
+        for data, image in images:
             dockerfile = image.path + "/Dockerfile"
 
             os.makedirs(image.path, exist_ok=True)
 
             template.stream(
-                data=build_element,
+                data=data,
                 image=image
             ).dump(dockerfile)
 
@@ -172,7 +175,7 @@ class HubUpdater:
             if response.status_code != 204:
                 raise Exception("ERROR [%d]: %s" % (response.status_code, response.text))
 
-    def add_builds(self, repo: str, branch: str, images: Set[Tuple[BuildElement, Image]]):
+    def add_builds(self, repo: str, branch: str, images: Set[Tuple[BuildData, Image]]):
         if self.token is None:
             raise Exception("You need to login first")
 

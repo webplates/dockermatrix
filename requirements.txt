@@ -1,3 +1,0 @@
-jinja2
-semver>=2.7
-requests
