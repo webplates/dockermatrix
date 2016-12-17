@@ -10,4 +10,5 @@ __pycache__/
 
 
 # Custom
-test.py
+build.py
+Dockerfile.template
